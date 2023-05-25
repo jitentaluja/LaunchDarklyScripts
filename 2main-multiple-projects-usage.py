@@ -1,0 +1,159 @@
+from utils.apiHandler import checkRateLimit as api_call
+from utils.newApiHandler import checkRateLimit as new_api_call
+import json
+import os
+import datetime
+
+'''
+Set your LaunchDarkly instance information here
+'''
+API_KEY = "api-791e23d8-7554-49bb-bccb-cda920330ffa"
+
+def total(arr):
+    sum = 0
+
+    for i in arr:
+        sum = sum + i
+ 
+    return(sum)
+
+def get_flag_list(flag_list_url):
+    response = api_call("GET", flag_list_url, API_KEY, {}).json()
+    response_list = response['items']
+    number_of_flags = len(response_list)
+    flag_list = []
+
+    # file = open('output-flag-details.txt', 'w')
+
+    for i in range(number_of_flags):
+        #flag_list.append(response['items'][i]['key'])
+        flag_name = response['items'][i]['key']
+        z = response['items'][i]
+        maintainer = ""
+        a = response['items'][i]['creationDate']
+        archived = response['items'][i]['archived']
+        clientMobileKey = response['items'][i]['clientSideAvailability']['usingMobileKey']
+        clientEnvId = response['items'][i]['clientSideAvailability']['usingEnvironmentId']
+
+        if '_maintainer' in z:
+        	maintainer = response['items'][i]['_maintainer']['email']
+        else:
+        	maintainer = 'none'
+        
+        converteddatetime = datetime.datetime.fromtimestamp(a / 1000.0)
+        creation_date = converteddatetime.strftime('%Y-%m-%d')
+
+        temporary = response['items'][i]['temporary']
+        tags = response['items'][i]['tags']
+
+        # Write the flag key
+        flagDetails = (str(flag_name) + ': ' + str(tags) + ": " + str(maintainer) + ": " + ": " + ": " + str(clientMobileKey) + ": " + str(clientEnvId) + ": " + str(temporary) + ": " + str(creation_date) + ": " + ": " + str(archived))
+        flag_list.append(flagDetails)
+        # file.write(f'{flagDetails} \n')
+    
+    #file.close()
+    return flag_list
+
+def get_data(file, flag_usage_url_1, flag_status_url_1):
+
+    response = new_api_call("GET", flag_usage_url_1, API_KEY, {}).json()
+    series_1 = response["series"]
+    series_value_1 = []
+
+    # Iterate through series entries, and add up the values
+    for entry in series_1:
+        for key, value in entry.items():
+            if key != "time":
+                series_value_1.append(value)
+             
+        
+    series_total_1 = total(series_value_1)
+    # Write the total to the text file
+    file.write(f'{series_total_1}: ')
+
+    # Now check for STATUS
+    response_status = new_api_call("GET", flag_status_url_1, API_KEY, {}).json()
+    status_1 = response_status['name']
+
+    # Write the status to the text file
+    file.write(f'{status_1}: ')
+
+    return series_total_1
+
+
+def get_project_data(file, proj_env):
+
+    z = proj_env.strip()
+    print(z)
+    proj_env = z.split(',')
+    project_key = proj_env[0]
+    # environment = proj_env[1]
+    number_of_env = len(proj_env) - 1
+    print("***** : " + str(number_of_env))
+
+    # Get the list of flags, print it just because
+    flag_list_url = f'/flags/{project_key}'
+    flag_list = get_flag_list(flag_list_url)
+    # print(flag_list)
+
+    count = 0
+
+    # Iterate through the list of flags
+    for i in flag_list:
+        
+        file.write(f'{project_key}: ')
+        # Write the flag key
+        file.write(f'{i}: ')
+        
+        x = i[:i.index(":")]
+        # print(x)
+    	
+        total = 0
+        count = count + 1
+        print("Trying for flag " + str(count) + ": " + x)
+
+        for y in range(number_of_env):
+            y = y + 1
+            environment_key = proj_env[y]
+            print(environment_key)
+    		
+    	    # Get a series of usage entries over a time period (default is for the past 30 days)
+            flag_usage_url_1 = f'/usage/evaluations/{project_key}/{environment_key}/{x}'
+            # print(flag_usage_url_1)
+
+            flag_status_url_1 = f'/flag-statuses/{project_key}/{environment_key}/{x}'
+        
+            #Environment 1
+            series_total = get_data(file,flag_usage_url_1,flag_status_url_1)
+            total = total + series_total
+            
+    	
+        if number_of_env == 1:
+            file.write(f': : : : ')
+
+        if number_of_env == 2:
+            file.write(f': : ')
+            
+        file.write(f'{total} \n')
+
+
+# Main function
+def get_flag_usage():
+
+    # Create a text file for output
+    filename = "output-usage-allprojects-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    # file = open('output-usage-RUN2-210223.txt', 'w')
+    file = open(filename, 'w')
+
+    fileread = open('projects-and-prodEnvironments.txt', 'r')
+
+    flagDetails = ("LD Project Name" + ': '+ "Flag name" + ': ' + "Tags" + ": " + "Maintainer email" + ": " + "Launched?" + ": " + "Client side?" + ": " + "Client side - using mobile key?" + ": " + "Client side - using environment id?" + ": " + "Temporary = TRUE Permanent = FALSE" + ": " + "Creation Date" + ": " + "Archive Date" + ": " + "Flag Archived" + ": " + "Prod-Env-1 (evaluations)" + ": " + "Prod-Env-1 (status)" + ": " + "Prod-Env-2 (evaluations)" + ": " + "Prod-Env-2 (status)" + ": " + "Prod-Env-3 (evaluations)" + ": " + "Prod-Env-3 (status)" + ": " + "Total evaluations")
+    file.write(f'{flagDetails} \n')
+
+    for first, proj_env in enumerate(fileread):
+    	get_project_data(file, proj_env)
+    
+    file.close()
+
+if __name__ == "__main__":
+    get_flag_usage()
